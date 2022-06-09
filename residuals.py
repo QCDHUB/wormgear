@@ -7,7 +7,7 @@ from tools.config import conf
 from tools.tools import load,save
 import time
 from scipy.interpolate import griddata
-
+from qpdlib.qpdcalc import QPDCALC
 
 class RESIDUALS(_RESIDUALS):
   
@@ -30,23 +30,19 @@ class RESIDUALS(_RESIDUALS):
 
         #--get PDFs
         f1 = {_:[] for _ in self.flavs}
-        os.environ['LHAPDF_DATA_PATH'] = ''
+        os.environ['LHAPDF_DATA_PATH'] = 'obslib/wormgear/lhapdf'
         QCF = lhapdf.mkPDFs(self.lhapdf_pdf)
 
-        #--get mean value
-        QCF = QCF[0]
-
-        
-        f1['u'] = np.array([QCF.xfxQ2(2,x[i],Q2[i]) for i in range(len(x))])
-        f1['d'] = np.array([QCF.xfxQ2(1,x[i],Q2[i]) for i in range(len(x))])
+        f1['u'] = np.array([QCF.xfxQ2(2,x[i],Q2[i])/x[i] for i in range(len(x))])
+        f1['d'] = np.array([QCF.xfxQ2(1,x[i],Q2[i])/x[i] for i in range(len(x))])
 
         return f1
 
-    def get_D1(self,had,x,Q2):
+    def get_D1(self,had,z,Q2):
 
         #--get FFss
         D1 = {_:[] for _ in self.flavs}
-        os.environ['LHAPDF_DATA_PATH'] = ''
+        os.environ['LHAPDF_DATA_PATH'] = 'obslib/wormgear/lhapdf'
         if had in ['pi+', 'pi-', 'pi0']:
             QCF = lhapdf.mkPDFs(self.lhapdf_ff)
         if had in ['h+', 'h-']:
@@ -55,8 +51,8 @@ class RESIDUALS(_RESIDUALS):
         #--get mean value
         QCF = QCF[0]
 
-        fav = np.array([QCF.xfxQ2(2,x[i],Q2[i]) for i in range(len(x))])
-        unf = np.array([QCF.xfxQ2(1,x[i],Q2[i]) for i in range(len(x))])
+        fav = np.array([QCF.xfxQ2(2,z[i],Q2[i])/z[i] for i in range(len(z))])
+        unf = np.array([QCF.xfxQ2(1,z[i],Q2[i])/z[i] for i in range(len(z))])
 
         if had=='pi+' or had=='h+':
             D1['u'] = fav
@@ -96,10 +92,21 @@ class RESIDUALS(_RESIDUALS):
         #--get g1T from qcdlib
         g1T = self.g1T.get_xf()
 
-        #--widths, will need to get from qcdlib
-        kp2_g1T = {_:1.0 for _ in self.flavs}
-        kp2_f1  = {_:1.0 for _ in self.flavs}
-        Pp2_D1  = {_:1.0 for _ in self.flavs}
+        #--widths
+        kp2_g1T, kp2_f1, Pp2_D1 = {},{},{}
+
+        #--taken from inspirehep.net/literature/1781484
+        kp2_f1['u'] = 0.53
+        kp2_f1['d'] = 0.53
+
+        #--taken from inspirehep.net/literature/828163
+        kp2_g1T['u'] = 0.40
+        kp2_g1T['d'] = 0.40
+
+        #--taken from inspirehep.net/literature/1781484
+        Pp2_D1['u'] = 0.124
+        Pp2_D1['d'] = 0.145
+
 
         FUU, FLT = 0.0, 0.0
         for flav in self.flavs:
