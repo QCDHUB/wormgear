@@ -15,18 +15,22 @@ class RESIDUALS(_RESIDUALS):
  
         self.reaction='wormgear' 
         self.tabs=conf['wormgear tabs']
-        if 'g1T'  in conf: self.g1T  = conf['diffpippim']
+        if 'g1T'  in conf: self.g1T  = conf['g1T']
         self.setup()
         self.flavs = ['u','d']
 
-        if 'lhapdf_pdf'   in conf: self.lhapdf_pdf = conf['lhapdf_pdf']
-        else:                    self.lhapdf_pdf = 'JAM22-PDF_proton_nlo'
+        if 'lhapdf_pdf'   in conf: self.lhapdf_pdf   = conf['lhapdf_pdf']
+        else:                      self.lhapdf_pdf   = 'JAM22-PDF_proton_nlo'
         if 'lhapdf_ffpi'  in conf: self.lhapdf_ffpi  = conf['lhapdf_ffpi']
         else:                      self.lhapdf_ffpi  = 'JAM22-FF_pion_nlo'
         if 'lhapdf_ffhad' in conf: self.lhapdf_ffhad = conf['lhapdf_ffhad']
         else:                      self.lhapdf_ffhad = 'JAM22-FF_hadron_nlo'
 
-        os.environ['LHAPDF_DATA_PATH'] = 'obslib/wormgear/lhapdf'
+        os.environ['LHAPDF_DATA_PATH'] = '%s/obslib/wormgear/lhapdf'%(os.environ['FITPACK'])
+        #--get PDFs, 0 for mean value
+        self.PDF   = lhapdf.mkPDF(self.lhapdf_pdf,0)
+        self.FFPI  = lhapdf.mkPDF(self.lhapdf_ffpi,0)
+        self.FFHAD = lhapdf.mkPDF(self.lhapdf_ffhad,0)
         self.setup_f1()
         self.setup_D1()
 
@@ -41,14 +45,14 @@ class RESIDUALS(_RESIDUALS):
             X     = self.tabs[idx]['X']
             Q2    = self.tabs[idx]['Q2']
 
-            #--get PDFs
-            QCF = lhapdf.mkPDFs(self.lhapdf_pdf)
 
-            self.f1[idx]['u'] = np.array([QCF.xfxQ2(2,x[i],Q2[i])/x[i] for i in range(len(x))])
-            self.f1[idx]['d'] = np.array([QCF.xfxQ2(1,x[i],Q2[i])/x[i] for i in range(len(x))])
+            self.f1[idx]['u'] = np.array([self.PDF.xfxQ2(2,X[i],Q2[i])/X[i] for i in range(len(X))])
+            self.f1[idx]['d'] = np.array([self.PDF.xfxQ2(1,X[i],Q2[i])/X[i] for i in range(len(X))])
 
     def setup_D1(self):
 
+        self.D1 = {}
+  
         for idx in self.tabs:
 
             self.D1[idx] = {_:[] for _ in self.flavs}
@@ -57,17 +61,14 @@ class RESIDUALS(_RESIDUALS):
             Q2    = self.tabs[idx]['Q2']
             had   = self.tabs[idx]['hadron'][0].strip()
 
-            #--get FFs
+            #--get FFs, 0 for mean value
             if had in ['pi+', 'pi-', 'pi0']:
-                QCF = lhapdf.mkPDFs(self.lhapdf_ff)
+                QCF = self.FFPI
             if had in ['h+', 'h-']:
-                QCF = lhapdf.mkPDFs(self.lhapdf_had)
+                QCF = self.FFHAD
 
-            #--get mean value
-            QCF = QCF[0]
-
-            fav = np.array([QCF.xfxQ2(2,z[i],Q2[i])/z[i] for i in range(len(z))])
-            unf = np.array([QCF.xfxQ2(1,z[i],Q2[i])/z[i] for i in range(len(z))])
+            fav = np.array([QCF.xfxQ2(2,Z[i],Q2[i])/Z[i] for i in range(len(Z))])
+            unf = np.array([QCF.xfxQ2(1,Z[i],Q2[i])/Z[i] for i in range(len(Z))])
 
             if had=='pi+' or had=='h+':
                 self.D1[idx]['u'] = fav
@@ -79,7 +80,7 @@ class RESIDUALS(_RESIDUALS):
                 self.D1[idx]['u'] = (fav + unf)/2.0
                 self.D1[idx]['d'] = (fav + unf)/2.0
 
-    def get_A_LT(self,idx,had):
+    def get_A_LT(self,idx):
     
 
         #--charge of positive quarks
@@ -104,8 +105,8 @@ class RESIDUALS(_RESIDUALS):
 
         #--get g1T from qcdlib
         g1T = {}
-        g1T['u'] = np.array([self.g1T.get_xf(X[i],Q2[i],'u')/X[i] for i in range(len(X))])
-        g1T['d'] = np.array([self.g1T.get_xf(X[i],Q2[i],'d')/X[i] for i in range(len(X))])
+        g1T['u'] = np.array([self.g1T.get_xF(X[i],Q2[i],'u',f1['u'][i])/X[i] for i in range(len(X))])
+        g1T['d'] = np.array([self.g1T.get_xF(X[i],Q2[i],'d',f1['d'][i])/X[i] for i in range(len(X))])
 
         #--isospin symmetry for neutron
         if tar=='n':
@@ -134,7 +135,7 @@ class RESIDUALS(_RESIDUALS):
         FUU, FLT = 0.0, 0.0
         for flav in self.flavs:
             if   flav in ['u']: e = ep
-            elif flav in ['d']: e = ed
+            elif flav in ['d']: e = em
 
             lambda_f1  = Z**2*kp2_f1[flav]  + Pp2_D1[flav]
             lambda_g1T = Z**2*kp2_g1T[flav] + Pp2_D1[flav]
@@ -157,7 +158,7 @@ class RESIDUALS(_RESIDUALS):
             obs    = self.tabs[idx]['obs'][0].strip()
 
             if obs=='A_LTcos(phi_h-phi_S)':
-                self.get_A_LT(idx,had)
+                thy = self.get_A_LT(idx)
 
             self.tabs[idx]['thy'] = thy
     
@@ -172,22 +173,22 @@ class RESIDUALS(_RESIDUALS):
         L=[]
   
         if len(self.tabs.keys())!=0:
-            L.append('reaction: dihadron')
-            for f in conf['datasets']['dihadron']['filters']:
+            L.append('reaction: wormgear')
+            for f in conf['datasets']['wormgear']['filters']:
                 L.append('filters: %s'%f)
   
-            L.append('%7s %3s %20s %5s %10s %10s %10s %10s %10s'%('idx','tar','col','npts','chi2','chi2-npts','chi2/npts','rchi2','nchi2'))
+            L.append('%7s %3s %3s %20s %5s %10s %10s %10s %10s'%('idx','tar','had','col','npts','chi2','chi2/npts','rchi2','nchi2'))
             for k in self.tabs:
                 if len(self.tabs[k])==0: continue 
                 res=self.tabs[k]['residuals']
   
                 rres=[]
-                for c in conf['rparams']['dihadron'][k]:
-                    rres.append(conf['rparams']['dihadron'][k][c]['value'])
+                for c in conf['rparams']['wormgear'][k]:
+                    rres.append(conf['rparams']['wormgear'][k][c]['value'])
                 rres=np.array(rres)
   
-                if k in conf['datasets']['dihadron']['norm']:
-                    norm=conf['datasets']['dihadron']['norm'][k]
+                if k in conf['datasets']['wormgear']['norm']:
+                    norm=conf['datasets']['wormgear']['norm'][k]
                     nres=(norm['value']-1)/norm['dN']
                 else:
                     nres=0
@@ -195,11 +196,11 @@ class RESIDUALS(_RESIDUALS):
                 chi2=np.sum(res**2)
                 rchi2=np.sum(rres**2)
                 nchi2=nres**2
-                if 'target' in self.tabs[k]: tar=self.tabs[k]['target'][0]
-                else: tar = '-'
+                tar=self.tabs[k]['tar'][0]
                 col=self.tabs[k]['col'][0].split()[0]
+                had=self.tabs[k]['hadron'][0].split()[0]
                 npts=res.size
-                L.append('%7d %3s %20s %5d %10.2f %10.2f %10.2f %10.2f %10.2f'%(k,tar,col,npts,chi2,chi2-npts,chi2/npts,rchi2,nchi2))
+                L.append('%7d %3s %3s %20s %5d %10.2f %10.2f %10.2f %10.2f'%(k,tar,had,col,npts,chi2,chi2/npts,rchi2,nchi2))
   
             if level==1:
               L.append('-'*100)  
