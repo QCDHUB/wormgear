@@ -91,8 +91,9 @@ class RESIDUALS(_RESIDUALS):
         D1 = self.get_D1(had,z,Q2)
 
         #--get g1T from qcdlib
-        g1T = self.g1T.get_xf()
-
+        g1T = {}
+        g1T['u'] = np.array([self.g1T.get_xf(x[i],Q2[i],'u')/x[i] for i in range(len(x))])
+        g1T['d'] = np.array([self.g1T.get_xf(x[i],Q2[i],'u')/x[i] for i in range(len(x))])
 
         #--isospin symmetry for neutron
         if tar=='n':
