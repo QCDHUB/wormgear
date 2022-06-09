@@ -7,7 +7,7 @@ from tools.config import conf
 from tools.tools import load,save
 import time
 from scipy.interpolate import griddata
-from qpdlib.qpdcalc import QPDCALC
+import lhapdf
 
 class RESIDUALS(_RESIDUALS):
   
@@ -20,51 +20,64 @@ class RESIDUALS(_RESIDUALS):
         self.flavs = ['u','d']
 
         if 'lhapdf_pdf'   in conf: self.lhapdf_pdf = conf['lhapdf_pdf']
-        else:                    self.lhapdf_pdf = 'JAM22'
+        else:                    self.lhapdf_pdf = 'JAM22-PDF_proton_nlo'
         if 'lhapdf_ffpi'  in conf: self.lhapdf_ffpi  = conf['lhapdf_ffpi']
-        else:                      self.lhapdf_ffpi  = 'JAM22'
+        else:                      self.lhapdf_ffpi  = 'JAM22-FF_pion_nlo'
         if 'lhapdf_ffhad' in conf: self.lhapdf_ffhad = conf['lhapdf_ffhad']
-        else:                      self.lhapdf_ffhad = 'JAM22'
+        else:                      self.lhapdf_ffhad = 'JAM22-FF_hadron_nlo'
 
-    def get_f1(self,x,Q2):
-
-        #--get PDFs
-        f1 = {_:[] for _ in self.flavs}
         os.environ['LHAPDF_DATA_PATH'] = 'obslib/wormgear/lhapdf'
-        QCF = lhapdf.mkPDFs(self.lhapdf_pdf)
+        self.setup_f1()
+        self.setup_D1()
 
-        f1['u'] = np.array([QCF.xfxQ2(2,x[i],Q2[i])/x[i] for i in range(len(x))])
-        f1['d'] = np.array([QCF.xfxQ2(1,x[i],Q2[i])/x[i] for i in range(len(x))])
+    def setup_f1(self):
 
-        return f1
+        self.f1 = {}
 
-    def get_D1(self,had,z,Q2):
+        for idx in self.tabs:
 
-        #--get FFss
-        D1 = {_:[] for _ in self.flavs}
-        os.environ['LHAPDF_DATA_PATH'] = 'obslib/wormgear/lhapdf'
-        if had in ['pi+', 'pi-', 'pi0']:
-            QCF = lhapdf.mkPDFs(self.lhapdf_ff)
-        if had in ['h+', 'h-']:
-            QCF = lhapdf.mkPDFs(self.lhapdf_had)
+            self.f1[idx] = {_:[] for _ in self.flavs}
 
-        #--get mean value
-        QCF = QCF[0]
+            X     = self.tabs[idx]['X']
+            Q2    = self.tabs[idx]['Q2']
 
-        fav = np.array([QCF.xfxQ2(2,z[i],Q2[i])/z[i] for i in range(len(z))])
-        unf = np.array([QCF.xfxQ2(1,z[i],Q2[i])/z[i] for i in range(len(z))])
+            #--get PDFs
+            QCF = lhapdf.mkPDFs(self.lhapdf_pdf)
 
-        if had=='pi+' or had=='h+':
-            D1['u'] = fav
-            D1['d'] = unf
-        elif had=='pi-' or had=='h-':
-            D1['u'] = unf
-            D1['d'] = fav
-        elif had=='pi0':
-            D1['u'] = (fav + unf)/2.0
-            D1['d'] = (fav + unf)/2.0
+            self.f1[idx]['u'] = np.array([QCF.xfxQ2(2,x[i],Q2[i])/x[i] for i in range(len(x))])
+            self.f1[idx]['d'] = np.array([QCF.xfxQ2(1,x[i],Q2[i])/x[i] for i in range(len(x))])
 
-        return D1
+    def setup_D1(self):
+
+        for idx in self.tabs:
+
+            self.D1[idx] = {_:[] for _ in self.flavs}
+
+            Z     = self.tabs[idx]['Z']
+            Q2    = self.tabs[idx]['Q2']
+            had   = self.tabs[idx]['hadron'][0].strip()
+
+            #--get FFs
+            if had in ['pi+', 'pi-', 'pi0']:
+                QCF = lhapdf.mkPDFs(self.lhapdf_ff)
+            if had in ['h+', 'h-']:
+                QCF = lhapdf.mkPDFs(self.lhapdf_had)
+
+            #--get mean value
+            QCF = QCF[0]
+
+            fav = np.array([QCF.xfxQ2(2,z[i],Q2[i])/z[i] for i in range(len(z))])
+            unf = np.array([QCF.xfxQ2(1,z[i],Q2[i])/z[i] for i in range(len(z))])
+
+            if had=='pi+' or had=='h+':
+                self.D1[idx]['u'] = fav
+                self.D1[idx]['d'] = unf
+            elif had=='pi-' or had=='h-':
+                self.D1[idx]['u'] = unf
+                self.D1[idx]['d'] = fav
+            elif had=='pi0':
+                self.D1[idx]['u'] = (fav + unf)/2.0
+                self.D1[idx]['d'] = (fav + unf)/2.0
 
     def get_A_LT(self,idx,had):
     
@@ -74,26 +87,25 @@ class RESIDUALS(_RESIDUALS):
         #--charge of negative quarks
         em = -1/3
 
-        x     = self.tabs[idx]['x']
+        X     = self.tabs[idx]['X']
         Q2    = self.tabs[idx]['Q2']
-        z     = self.tabs[idx]['z']
-        M     = self.tabs[idx]['M']
+        Z     = self.tabs[idx]['Z']
         PhT   = self.tabs[idx]['PhT']
         tar   = self.tabs[idx]['tar'][0]
-        had    = self.tabs[idx]['hadrons'][0].strip()
+        had    = self.tabs[idx]['hadron'][0].strip()
 
         if tar=='p' or tar=='n':
             M = conf['aux'].M
 
     
         #--get PDFs and FFs from LHAPDF
-        f1 = self.get_f1(x,Q2)
-        D1 = self.get_D1(had,z,Q2)
+        f1 = self.f1[idx]
+        D1 = self.D1[idx]
 
         #--get g1T from qcdlib
         g1T = {}
-        g1T['u'] = np.array([self.g1T.get_xf(x[i],Q2[i],'u')/x[i] for i in range(len(x))])
-        g1T['d'] = np.array([self.g1T.get_xf(x[i],Q2[i],'u')/x[i] for i in range(len(x))])
+        g1T['u'] = np.array([self.g1T.get_xf(X[i],Q2[i],'u')/X[i] for i in range(len(X))])
+        g1T['d'] = np.array([self.g1T.get_xf(X[i],Q2[i],'d')/X[i] for i in range(len(X))])
 
         #--isospin symmetry for neutron
         if tar=='n':
@@ -124,15 +136,15 @@ class RESIDUALS(_RESIDUALS):
             if   flav in ['u']: e = ep
             elif flav in ['d']: e = ed
 
-            lambda_f1  = z**2*kp2_f1[flav]  + Pp2_D1[flav]
-            lambda_g1T = z**2*kp2_g1T[flav] + Pp2_D1[flav]
+            lambda_f1  = Z**2*kp2_f1[flav]  + Pp2_D1[flav]
+            lambda_g1T = Z**2*kp2_g1T[flav] + Pp2_D1[flav]
 
             g_f1  = np.exp(-PhT**2/lambda_f1) /(np.pi*lambda_f1)
             g_g1T = np.exp(-PhT**2/lambda_g1T)/(np.pi*lambda_g1T)
 
-            FUU += x*e**2*f1[flav]*D1[flav]*g_f1
+            FUU += X*e**2*f1[flav]*D1[flav]*g_f1
 
-            FLT += 2*M*x*z*PhT*e**2*g1T[flav]*D1[flav]*g_g1T/lambda_g1T
+            FLT += 2*M*X*Z*PhT*e**2*g1T[flav]*D1[flav]*g_g1T/lambda_g1T
 
         
         thy = FLT/FUU
