@@ -82,15 +82,25 @@ class RESIDUALS(_RESIDUALS):
         tar   = self.tabs[idx]['tar'][0]
         had    = self.tabs[idx]['hadrons'][0].strip()
 
-        if tar=='p':
+        if tar=='p' or tar=='n':
             M = conf['aux'].M
 
+    
         #--get PDFs and FFs from LHAPDF
         f1 = self.get_f1(x,Q2)
         D1 = self.get_D1(had,z,Q2)
 
         #--get g1T from qcdlib
         g1T = self.g1T.get_xf()
+
+
+        #--isospin symmetry for neutron
+        if tar=='n':
+            u,d = f1['u'],f1['d']
+            f1['u'],f1['d'] = d,u
+
+            u,d = g1T['u'],g1T['d']
+            g1T['u'],g1T['d'] = d,u
 
         #--widths
         kp2_g1T, kp2_f1, Pp2_D1 = {},{},{}
