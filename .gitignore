@@ -1,0 +1,7 @@
+*.pyc
+**gallery
+.DS_Store
+*.swp
+
+
+
